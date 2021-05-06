@@ -21,7 +21,7 @@ const client = new Client();
 client.setup('your bot token here');
 
 // On message received
-client.gateway.on('dispatch:MESSAGE_CREATE', async (messageCreate: GatewayMessageCreateDispatchData) => {
+client.gateway.on('MESSAGE_CREATE', async (messageCreate: GatewayMessageCreateDispatchData) => {
   // If the message is "!ping"
   if (messageCreate.content === '!ping') {
     // Send a message containing "Pong!"

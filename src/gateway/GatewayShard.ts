@@ -157,7 +157,7 @@ export class GatewayShard extends EventEmitter {
             break;
           }
         }
-        this.emit(`dispatch:${payload.t}`, payload.d);
+        this.emit(payload.t, payload.d);
         break;
       }
 
