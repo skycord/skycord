@@ -1,0 +1,13 @@
+{
+  "extends": "airbnb-typescript/base",
+  "parserOptions": {
+    "project": "./tsconfig.json"
+  },
+  "rules": {
+    "import/prefer-default-export": "off",
+    "max-len": [2, 200, 2, {
+      "ignoreUrls": true,
+      "ignoreComments": false
+    }]
+  }
+}
