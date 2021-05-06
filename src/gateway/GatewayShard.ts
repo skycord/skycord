@@ -4,6 +4,7 @@ import {
   GatewayCloseCodes, GatewayDispatchEvents, GatewayIdentifyData, GatewayOPCodes, GatewayReceivePayload, GatewayResumeData,
 } from 'discord-api-types/gateway';
 import { platform } from 'os';
+import * as erlpack from 'erlpack';
 import Timer = NodeJS.Timer;
 
 export type GatewayIdentifyDataPartial = Partial<GatewayIdentifyData> & {
@@ -129,7 +130,7 @@ export class GatewayShard extends EventEmitter {
   }
 
   onWebsocketMessage(event: MessageEvent) {
-    const payload = GatewayShard.decodePayload<GatewayReceivePayload>(event.data.toString());
+    const payload = GatewayShard.decodePayload<GatewayReceivePayload>(event.data as Buffer);
 
     this.emit('internal:receive', JSON.stringify(payload));
 
@@ -243,11 +244,15 @@ export class GatewayShard extends EventEmitter {
   }
 
   private static encodePayload(payload: unknown) {
-    return JSON.stringify(payload);
+    return erlpack.pack(payload);
   }
 
-  private static decodePayload<T = unknown>(payload: string): T {
-    return JSON.parse(payload);
+  private static decodePayload<T = unknown>(payload: string | Buffer): T {
+    let data = payload;
+    if (!Buffer.isBuffer(payload)) {
+      data = Buffer.from(new Uint8Array(data as Uint8Array));
+    }
+    return erlpack.unpack(data as Buffer);
   }
 
   emit(event: EventNames<ValidEventTypes>, ...args: EventArgs<ValidEventTypes, EventNames<ValidEventTypes>>): boolean {

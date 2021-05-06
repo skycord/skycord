@@ -60,7 +60,7 @@ export class GatewayClient extends EventEmitter {
     delete localIdentifyData.shard;
     // Spawn the shards
     this.createShards();
-    const websocketUrl = `${this.gatewayFeatureOptions.websocketUrl}?v=${this.gatewayFeatureOptions.version}`;
+    const websocketUrl = `${this.gatewayFeatureOptions.websocketUrl}?v=${this.gatewayFeatureOptions.version}&encoding=etf`;
     this.connectShards(websocketUrl, {
       ...localIdentifyData,
     });

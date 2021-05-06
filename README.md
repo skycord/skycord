@@ -26,6 +26,7 @@ client.gateway.on('dispatch:MESSAGE_CREATE', async (messageCreate: GatewayMessag
   if (messageCreate.content === '!ping') {
     // Send a message containing "Pong!"
     await client.rest.request(`/channels/${messageCreate.channel_id}/messages`, {
+      method: 'post',
       data: {
         content: 'Pong!',
       },
