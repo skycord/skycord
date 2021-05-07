@@ -1,6 +1,6 @@
 {
   "name": "skycord",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A low-level Discord API wrapper written in TypeScript.",
   "keywords": ["discord", "api", "bot", "typescript", "low-level"],
   "main": "lib/index.js",

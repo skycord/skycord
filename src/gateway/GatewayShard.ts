@@ -7,9 +7,7 @@ import { platform } from 'os';
 import * as erlpack from 'erlpack';
 import Timer = NodeJS.Timer;
 
-export type GatewayIdentifyDataPartial = Partial<GatewayIdentifyData> & {
-  intents: number;
-};
+export type GatewayIdentifyDataPartial = Partial<GatewayIdentifyData>;
 
 export class GatewayShard extends EventEmitter {
   private token: string;
@@ -192,7 +190,7 @@ export class GatewayShard extends EventEmitter {
 
   private identify(data: GatewayIdentifyDataPartial) {
     this.identifyData = data;
-    const payload: Partial<GatewayIdentifyDataPartial> = {
+    const payload: GatewayIdentifyDataPartial = {
       properties: {
         $browser: 'Skycord',
         $device: 'Skycord',

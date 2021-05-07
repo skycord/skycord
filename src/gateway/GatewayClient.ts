@@ -24,7 +24,7 @@ const defaultGatewayFeatureOptions: GatewayFeatureOptions = {
   shardConnectDelay: 5000,
   shardIds: [0],
   totalShards: 1,
-  intents: 0,
+  intents: 513,
 };
 
 export class GatewayClient extends EventEmitter {
@@ -49,12 +49,13 @@ export class GatewayClient extends EventEmitter {
     };
   }
 
-  public connect(identifyData: GatewayIdentifyDataPartial) {
+  public connect(identifyData?: GatewayIdentifyDataPartial) {
     if (this.gatewayFeatureOptions.shardIds.length > this.gatewayFeatureOptions.totalShards) {
       throw new Error('Shard id count is higher than the total shards.');
     }
     // Remove the shard property
     const localIdentifyData = {
+      intents: this.gatewayFeatureOptions.intents,
       ...identifyData,
     };
     delete localIdentifyData.shard;
