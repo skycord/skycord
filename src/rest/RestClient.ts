@@ -31,6 +31,7 @@ export interface RequestOptions {
   method?: string;
   query?: Record<string, string>;
   reason?: string;
+  bufferOutput?: boolean;
 }
 
 export const parseRateLimitRoute = (route: string, method?: string) => {
@@ -61,14 +62,15 @@ export class RestClient extends Map<string, RatelimitBucket> {
     };
   }
 
-  async request<T = unknown>(path: string, options?: RequestOptions) {
-    const route = parseRateLimitRoute(path);
+  async request<T = unknown>(path: string, options?: RequestOptions): Promise<T> {
+    const pathAdjusted = path.startsWith('/') ? path.substring(1) : path;
+    const route = parseRateLimitRoute(pathAdjusted);
     const bucket = this.get(route) ?? new RatelimitBucket();
     this.set(route, bucket);
 
     if (bucket.locked || bucket.ratelimited) {
       return new Promise<T>((resolve, reject) => {
-        bucket.add(() => this.request<T>(path, options).then(resolve, reject));
+        bucket.add(() => this.request<T>(pathAdjusted, options).then(resolve, reject));
       });
     }
 
@@ -93,7 +95,7 @@ export class RestClient extends Map<string, RatelimitBucket> {
       headers.set('content-type', 'application/json');
     }
 
-    let url = `${this.restFeatureOptions.baseUrl}/v${this.restFeatureOptions.version}/${path}`;
+    let url = `${this.restFeatureOptions.baseUrl}/v${this.restFeatureOptions.version}/${pathAdjusted}`;
     if (options?.query) {
       url += `?${new URLSearchParams(options.query)}`;
     }
@@ -110,17 +112,38 @@ export class RestClient extends Map<string, RatelimitBucket> {
       method: options?.method,
       signal: controller.signal,
     });
+
+    const resetAfter = parseFloat(response.headers.get('x-ratelimit-reset-after') ?? '0') * 1000;
+
+    if (response.status === 429) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, resetAfter);
+      });
+      return this.request<T>(pathAdjusted, options);
+    }
+
     bucket.unlock(
       parseInt(response.headers.get('x-ratelimit-limit') ?? '0', 10),
-      parseFloat(response.headers.get('x-ratelimit-reset-after') ?? '0') * 1000,
+      resetAfter,
       parseInt(response.headers.get('x-ratelimit-remaining') ?? '0', 10),
     );
 
     clearTimeout(timeout);
 
-    const result = response.headers.get('content-type') === 'application/json' ? await response.json() : undefined;
+    let result;
+    if (options && options.bufferOutput === true) {
+      result = await response.buffer();
+    } else {
+      result = response.headers.get('content-type') === 'application/json' ? await response.json() : await response.text();
+    }
     if (response.ok) {
       return result as T;
+    }
+    if (Buffer.isBuffer(result)) {
+      throw new RestError(JSON.parse(result.toString()));
+    }
+    if (typeof result === 'string' || result instanceof String) {
+      throw new RestError(JSON.parse(String(result)));
     }
     throw new RestError(result);
   }
