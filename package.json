@@ -1,8 +1,14 @@
 {
   "name": "skycord",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A low-level Discord API wrapper written in TypeScript.",
-  "keywords": ["discord", "api", "bot", "typescript", "low-level"],
+  "keywords": [
+    "discord",
+    "api",
+    "bot",
+    "typescript",
+    "low-level"
+  ],
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "repository": {
@@ -16,17 +22,19 @@
   "author": "ThatSkyz",
   "license": "MIT",
   "private": false,
-  "files": ["lib/**/*"],
+  "files": [
+    "lib/**/*"
+  ],
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "devDependencies": {
-    "@types/node": "^14.14.41",
+    "@types/node": "14.14.41",
     "@types/node-fetch": "^2.5.10",
-    "@types/ws": "^7.4.1",
-    "@typescript-eslint/eslint-plugin": "^4.22.0",
-    "eslint": "^7.24.0",
+    "@types/ws": "^7.4.2",
+    "@typescript-eslint/eslint-plugin": "^4.22.1",
+    "eslint": "^7.26.0",
     "eslint-config-airbnb-typescript": "^12.3.1",
     "eslint-plugin-import": "^2.22.1",
     "typescript": "^4.2.4"
@@ -36,7 +44,7 @@
     "discord-api-types": "^0.18.1",
     "erlpack": "^0.1.3",
     "eventemitter3": "^4.0.7",
-    "formdata-node": "^3.2.0",
+    "formdata-node": "^3.3.1",
     "node-fetch": "^2.6.1",
     "ws": "^7.4.5"
   }
