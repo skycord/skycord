@@ -11,14 +11,18 @@ To install the library, all you need to do is run the corresponding command.
 ### Example Ping-pong Bot (TypeScript)
 Note: This example is using TypeScript, so the [discord-api-types](https://github.com/discordjs/discord-api-types) package is used as typings for the events. If you want to run this example without modifications, you need to install the `discord-api-types` package.
 ```ts
-import { Client } from 'skycord';
+import { Client, LocalRestClient } from 'skycord';
 import { GatewayMessageCreateDispatchData } from 'discord-api-types';
 
-const client = new Client();
+const client = new Client({
+  token: 'your bot token here',
+});
 
-// Initialize the rest and gateway with the bot token
-// This should be done before anything else, otherwise rest and gateway will be undefined.
-client.setup('your bot token here');
+// Initialize the rest client (must be done before the gateway client)
+client.initializeNewRestClient(LocalRestClient);
+
+// Initialize the gateway client
+client.initializeNewGatewayClient();
 
 // On message received
 client.gateway.on('MESSAGE_CREATE', async (messageCreate: GatewayMessageCreateDispatchData) => {

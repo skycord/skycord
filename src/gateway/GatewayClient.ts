@@ -1,96 +1,88 @@
 import EventEmitter from 'eventemitter3';
-import { GatewayIdentifyDataPartial, GatewayShard } from './GatewayShard';
+import type { Client, RestClient } from '../index';
+import { wait } from '../utils/TimerUtils';
+import { GatewayShard } from './GatewayShard';
 
-const { version } = require('../../package.json');
+export interface GatewayClientOptions {
 
-export type GatewayFeatureMode = 'LOCAL';
+  version: number;
 
-export type GatewayFeatureOptions = {
-  mode: GatewayFeatureMode,
-  websocketUrl: string,
-  version: number,
-  userAgent: string,
-  shardConnectDelay: number,
-  shardIds: number[],
-  totalShards: number,
-  intents: number,
-};
+  intents: number;
 
-const defaultGatewayFeatureOptions: GatewayFeatureOptions = {
-  mode: 'LOCAL',
-  websocketUrl: 'wss://gateway.discord.gg',
-  version: 8,
-  userAgent: `DiscordBot (Skycord, ${version})`,
-  shardConnectDelay: 5000,
-  shardIds: [0],
-  totalShards: 1,
+  token: string | undefined;
+
+  totalShards: number | undefined;
+}
+
+export const defaultGatewayClientOptions: GatewayClientOptions = {
+  version: 9,
   intents: 513,
+  token: undefined,
+  totalShards: undefined,
 };
 
 export class GatewayClient extends EventEmitter {
-  public readonly gatewayFeatureOptions: GatewayFeatureOptions;
+  public readonly client: Client<RestClient>;
 
-  private readonly token: string;
+  public readonly gatewayClientOptions: GatewayClientOptions;
 
-  public readonly shards: GatewayShard[] = [];
+  public gatewayEndpoint: string | undefined;
 
-  constructor(token: string, gatewayFeatureOptions: Partial<GatewayFeatureOptions>) {
+  public maxConcurrency: number;
+
+  public shards: GatewayShard[];
+
+  private shardSpawnQueue: Promise<void>;
+
+  private remaining: number;
+
+  public determinedTotalShards = 1;
+
+  constructor(client: Client<RestClient>, gatewayClientOptions: GatewayClientOptions) {
     super();
-    this.token = token;
-    this.gatewayFeatureOptions = {
-      mode: gatewayFeatureOptions.mode ?? defaultGatewayFeatureOptions.mode,
-      websocketUrl: gatewayFeatureOptions.websocketUrl ?? defaultGatewayFeatureOptions.websocketUrl,
-      version: gatewayFeatureOptions.version ?? defaultGatewayFeatureOptions.version,
-      userAgent: gatewayFeatureOptions.userAgent ?? defaultGatewayFeatureOptions.userAgent,
-      shardConnectDelay: gatewayFeatureOptions.shardConnectDelay ?? defaultGatewayFeatureOptions.shardConnectDelay,
-      shardIds: gatewayFeatureOptions.shardIds ?? defaultGatewayFeatureOptions.shardIds,
-      totalShards: gatewayFeatureOptions.totalShards ?? defaultGatewayFeatureOptions.totalShards,
-      intents: gatewayFeatureOptions.intents ?? defaultGatewayFeatureOptions.intents,
-    };
+    this.client = client;
+    this.gatewayClientOptions = gatewayClientOptions;
+    this.maxConcurrency = Infinity;
+    this.shards = [];
+    this.shardSpawnQueue = Promise.resolve();
+    this.remaining = 1;
   }
 
-  public connect(identifyData?: GatewayIdentifyDataPartial) {
-    if (this.gatewayFeatureOptions.shardIds.length > this.gatewayFeatureOptions.totalShards) {
-      throw new Error('Shard id count is higher than the total shards.');
-    }
-    // Remove the shard property
-    const localIdentifyData = {
-      intents: this.gatewayFeatureOptions.intents,
-      ...identifyData,
-    };
-    delete localIdentifyData.shard;
-    // Spawn the shards
-    this.createShards();
-    const websocketUrl = `${this.gatewayFeatureOptions.websocketUrl}?v=${this.gatewayFeatureOptions.version}&encoding=etf`;
-    this.connectShards(websocketUrl, {
-      ...localIdentifyData,
+  public spawnShard(shardId: number): void {
+    this.shardSpawnQueue = this.shardSpawnQueue.then(async () => {
+      if (this.remaining <= 0) {
+        await wait(5000);
+        this.remaining = this.maxConcurrency;
+      }
+      this.shards[shardId] = new GatewayShard(this.client, this, shardId);
+      this.shards[shardId].connect();
+      this.remaining -= 1;
     });
   }
 
-  private createShards() {
-    for (let i = 0; i < this.gatewayFeatureOptions.shardIds.length; i += 1) {
-      const shard = new GatewayShard(this.token, this.gatewayFeatureOptions.shardIds[i], this.gatewayFeatureOptions.totalShards);
-      shard.on('*', (event, ...args) => {
-        this.emit('*', event, ...args);
-        this.emit.call(this, event, ...args);
-      });
-      this.shards.push(shard);
+  async connect(shardIds?: number[]): Promise<void> {
+    this.determinedTotalShards = this.gatewayClientOptions.totalShards ?? 1;
+    if (!this.gatewayEndpoint) {
+      const response = await this.client.rest.request<{
+        shards: number;
+        url: string;
+        session_start_limit: {
+          max_concurrency: number;
+        };
+      }>('/gateway/bot');
+      this.determinedTotalShards = this.gatewayClientOptions.totalShards ?? response.body.shards;
+      this.gatewayEndpoint = response.body.url;
+      this.maxConcurrency = response.body.session_start_limit.max_concurrency;
+      this.remaining = this.maxConcurrency;
     }
-  }
-
-  private async connectShards(url: string, identifyData?: GatewayIdentifyDataPartial) {
-    // Note: eslint rule 'no-await-in-loop' is disabled so that we can connect one at a time to respect ratelimits
-    for (let i = 0; i < this.shards.length; i += 1) {
-      const shard = this.shards[i];
-      // eslint-disable-next-line no-await-in-loop
-      await shard.connect(url);
-      shard.resumeOrIdentify(true, identifyData);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          resolve();
-        }, this.gatewayFeatureOptions.shardConnectDelay);
-      });
+    if (shardIds) {
+      for (let i = 0; i < shardIds.length; i += 1) {
+        this.spawnShard(shardIds[i]);
+      }
+    } else {
+      for (let i = 0; i < this.determinedTotalShards; i += 1) {
+        this.spawnShard(i);
+      }
     }
   }
 }

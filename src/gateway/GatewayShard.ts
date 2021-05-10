@@ -1,260 +1,189 @@
-import EventEmitter, { EventArgs, EventNames, ValidEventTypes } from 'eventemitter3';
 import WebSocket, { CloseEvent, MessageEvent } from 'ws';
+import { Inflate } from 'zlib-sync';
+import EventEmitter, { EventArgs, EventNames, ValidEventTypes } from 'eventemitter3';
+import * as zlib from 'zlib';
 import {
-  GatewayCloseCodes, GatewayDispatchEvents, GatewayIdentifyData, GatewayOPCodes, GatewayReceivePayload, GatewayResumeData,
-} from 'discord-api-types/gateway';
-import { platform } from 'os';
-import * as erlpack from 'erlpack';
+  GatewayCloseCodes, GatewayDispatchEvents, GatewayOPCodes, GatewayReceivePayload,
+} from 'discord-api-types';
+import type { Client, GatewayClient, RestClient } from '../index';
 import Timer = NodeJS.Timer;
 
-export type GatewayIdentifyDataPartial = Partial<GatewayIdentifyData>;
-
 export class GatewayShard extends EventEmitter {
-  private token: string;
+  public readonly client: Client<RestClient>;
 
-  private id: number | undefined;
+  public readonly gatewayClient: GatewayClient;
 
-  private totalShards: number | undefined;
+  public readonly shardId: number;
+
+  private inflate: Inflate | undefined;
 
   private websocket: WebSocket | undefined;
 
-  private url: string | undefined;
+  private sequence: number;
 
-  private protocols: string[] | undefined;
+  private sessionId: string | undefined;
 
-  public heartbeatInterval?: Timer;
+  private lastHeartbeatAcked: boolean;
 
-  public latency: number = 0;
+  private heartbeatInterval: Timer | undefined;
 
-  public readyAt: number = 0;
-
-  public resumedAt: number = 0;
-
-  public seq: number = 0;
-
-  public sessionID?: string;
-
-  private lastHeartbeatSent: number = 0;
-
-  private identifyData?: GatewayIdentifyDataPartial;
-
-  constructor(token: string, id?: number, totalShards?: number) {
+  constructor(client: Client<RestClient>, gatewayClient: GatewayClient, shardId: number) {
     super();
-    this.token = token;
-    this.id = id;
-    this.totalShards = totalShards;
+    this.client = client;
+    this.gatewayClient = gatewayClient;
+    this.shardId = shardId;
+    this.sequence = -1;
+    this.lastHeartbeatAcked = false;
   }
 
-  async connect(url: string, protocols?: string[]): Promise<void> {
-    this.url = url;
-    this.protocols = protocols;
-    this.websocket = new WebSocket(this.url, protocols);
-
-    this.websocket.addEventListener('close', (event) => {
-      this.onWebsocketClose(event);
+  connect(): void {
+    this.disconnect();
+    this.inflate = new Inflate({
+      chunkSize: 65535,
     });
-    this.websocket.addEventListener('error', (event) => {
-      this.onWebsocketError(event);
-    });
-    this.websocket.addEventListener('message', (event) => {
-      this.onWebsocketMessage(event);
-    });
-
-    return new Promise((resolve) => {
-      this.websocket!.addEventListener('open', resolve);
-    });
+    this.websocket = new WebSocket(`${this.gatewayClient.gatewayEndpoint}?v=${this.gatewayClient.gatewayClientOptions.version}&encoding=json&compress=zlib-stream`);
+    this.websocket.onmessage = this.onMessage.bind(this);
+    this.websocket.onclose = this.onClose.bind(this);
   }
 
-  disconnect(code: number, reason: string) {
-    if (!this.websocket) {
-      throw new Error('Unable to disconnect since it was not connected.');
-    }
-    this.websocket.close(code, reason);
-  }
-
-  private reset(soft?: boolean) {
+  disconnect(closeCode: number = 4009): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = undefined;
     }
-    this.websocket = undefined;
-
-    if (!soft) {
-      this.latency = 0;
-      this.seq = 0;
-      this.sessionID = undefined;
+    if (this.websocket) {
+      try {
+        this.websocket.close(closeCode);
+      } catch (e) {
+        // Ignore error
+      }
+      this.websocket = undefined;
     }
   }
 
-  public async onWebsocketClose(event: CloseEvent): Promise<void> {
-    let canReconnect: boolean = false;
-    let canResume: boolean = false;
+  send(data: any): void {
+    if (this.websocket) {
+      this.websocket.send(JSON.stringify(data));
+    }
+  }
 
-    switch (event.code) {
-      case 0: // ?
-      case 1001: // ?
-      case 1006: // Maybe (?)
-      case GatewayCloseCodes.UnknownError: {
-        canResume = true;
-        canReconnect = true;
-        break;
-      }
-      case GatewayCloseCodes.UnknownOpCode:
-      case GatewayCloseCodes.DecodeError:
+  onMessage(messageEvent: MessageEvent): void {
+    const data: Buffer = messageEvent.data instanceof ArrayBuffer ? Buffer.from(messageEvent.data) : messageEvent.data as Buffer;
+    const flush = data.length >= 4 && data.readUInt32BE(data.length - 4) === 0x0000FFFF;
+    this.inflate!.push(data, flush && zlib.constants.Z_SYNC_FLUSH);
+    if (!flush) {
+      return;
+    }
+    this.onPayload(JSON.parse(this.inflate!.result as string));
+  }
+
+  onClose(closeEvent: CloseEvent): void {
+    switch (closeEvent.code) {
+      case 1000:
+      case 4006: // Session no longer valid
       case GatewayCloseCodes.InvalidSeq:
-      case GatewayCloseCodes.RateLimited:
-      case GatewayCloseCodes.SessionTimedOut: {
-        canReconnect = true;
+      case GatewayCloseCodes.SessionTimedOut:
+        this.gatewayClient.spawnShard(this.shardId);
         break;
-      }
-      default: {
-        canResume = false;
-        canReconnect = false;
+      case GatewayCloseCodes.InvalidShard:
+      case GatewayCloseCodes.ShardingRequired:
+      case GatewayCloseCodes.InvalidIntents:
+      case GatewayCloseCodes.DisallowedIntents:
+        throw new Error(closeEvent.reason);
+      default:
+        this.connect();
         break;
-      }
-    }
-
-    this.emit('internal:disconnect', canResume, canReconnect, event);
-    this.reset(canResume);
-
-    if (canReconnect && this.url) {
-      await this.connect(this.url, this.protocols);
-      this.resumeOrIdentify(canResume, this.identifyData);
     }
   }
 
-  onWebsocketError(event: unknown) {
-    this.emit('internal:error', event);
-  }
+  onPayload(gatewayPayload: GatewayReceivePayload): void {
+    if (gatewayPayload.s > this.sequence) {
+      this.sequence = gatewayPayload.s;
+    }
 
-  onWebsocketMessage(event: MessageEvent) {
-    const payload = GatewayShard.decodePayload<GatewayReceivePayload>(event.data as Buffer);
+    this.emit(`opcode:${gatewayPayload.op}`, gatewayPayload);
 
-    this.emit('internal:receive', JSON.stringify(payload));
-
-    this.emit(`opcode:${payload.op}`, payload);
-
-    switch (payload.op) {
-      case GatewayOPCodes.Dispatch: {
-        this.seq = payload.s;
-        switch (payload.t) {
-          case GatewayDispatchEvents.Ready: {
-            this.id ??= payload.d.shard?.[0];
-            this.readyAt = Date.now();
-            this.sessionID = payload.d.session_id;
-            break;
+    switch (gatewayPayload.op) {
+      case GatewayOPCodes.Hello:
+        this.lastHeartbeatAcked = true;
+        this.heartbeatInterval = setInterval(() => {
+          if (!this.lastHeartbeatAcked) {
+            this.connect();
+          } else {
+            this.lastHeartbeatAcked = false;
+            this.send({
+              op: GatewayOPCodes.Heartbeat,
+              d: this.sequence,
+            });
           }
-
-          case GatewayDispatchEvents.Resumed: {
-            this.resumedAt = Date.now();
-            this.emit('internal:resumed', this.resumedAt);
+        }, gatewayPayload.d.heartbeat_interval);
+        if (this.sessionId) {
+          this.send({
+            op: GatewayOPCodes.Resume,
+            d: {
+              token: this.gatewayClient.gatewayClientOptions.token,
+              session_id: this.sessionId,
+              seq: this.sequence,
+            },
+          });
+        } else {
+          this.send({
+            op: GatewayOPCodes.Identify,
+            d: {
+              token: this.gatewayClient.gatewayClientOptions.token,
+              intents: this.gatewayClient.gatewayClientOptions.intents,
+              properties: {
+                $os: process.platform,
+                $device: 'Skycord',
+                $browser: 'Skycord',
+              },
+              shard: [this.shardId, this.gatewayClient.determinedTotalShards],
+            },
+          });
+        }
+        break;
+      case GatewayOPCodes.Reconnect:
+        if (this.sessionId) {
+          this.connect();
+        } else {
+          this.gatewayClient.spawnShard(this.shardId);
+        }
+        break;
+      case GatewayOPCodes.InvalidSession:
+        if (gatewayPayload.d && this.sessionId) {
+          this.send({
+            op: GatewayOPCodes.Resume,
+            d: {
+              token: this.gatewayClient.gatewayClientOptions.token,
+              session_id: this.sessionId,
+              seq: this.sequence,
+            },
+          });
+        } else {
+          this.gatewayClient.spawnShard(this.shardId);
+        }
+        break;
+      case GatewayOPCodes.Dispatch:
+        switch (gatewayPayload.t) {
+          case GatewayDispatchEvents.Ready:
+            this.sessionId = gatewayPayload.d.session_id;
+            this.emit(gatewayPayload.t, gatewayPayload.d);
             break;
-          }
-
           default: {
+            this.emit(gatewayPayload.t, gatewayPayload.d);
             break;
           }
         }
-        this.emit(payload.t, payload.d);
         break;
-      }
-
-      case GatewayOPCodes.InvalidSession: {
-        this.resumeOrIdentify(payload.d, this.identifyData);
+      case GatewayOPCodes.HeartbeatAck:
+        this.lastHeartbeatAcked = true;
         break;
-      }
-
-      case GatewayOPCodes.Hello: {
-        const delay = payload.d.heartbeat_interval;
-        this.heartbeatInterval = setInterval(() => {
-          this.heartbeat();
-        }, delay);
+      default:
         break;
-      }
-
-      case GatewayOPCodes.HeartbeatAck: {
-        this.latency = Date.now() - this.lastHeartbeatSent;
-        break;
-      }
-
-      default: {
-        break;
-      }
     }
-  }
-
-  private heartbeat() {
-    this.lastHeartbeatSent = Date.now();
-    this.sendPayload(GatewayOPCodes.Heartbeat, this.seq);
-  }
-
-  private identify(data: GatewayIdentifyDataPartial) {
-    this.identifyData = data;
-    const payload: GatewayIdentifyDataPartial = {
-      properties: {
-        $browser: 'Skycord',
-        $device: 'Skycord',
-        $os: `${platform()}`,
-      },
-      shard: data.shard ?? (
-        this.id !== undefined && this.totalShards !== undefined ? [this.id, this.totalShards] : undefined
-      ),
-      token: this.token,
-      ...data,
-    };
-    this.sendPayload(GatewayOPCodes.Identify, payload);
-  }
-
-  private resume() {
-    if (!this.sessionID) {
-      throw new Error('Cannot resume since no session id is available.');
-    }
-    const payload: GatewayResumeData = {
-      seq: this.seq,
-      session_id: this.sessionID,
-      token: this.token,
-    };
-    this.sendPayload(GatewayOPCodes.Resume, payload);
-  }
-
-  public resumeOrIdentify(canResume?: boolean, identifyData?: GatewayIdentifyDataPartial) {
-    if (canResume && this.sessionID) {
-      this.resume();
-    } else if (identifyData) {
-      this.identify(identifyData);
-    } else {
-      throw new Error('Failed to resume or identify.');
-    }
-  }
-
-  private sendPayload(opcode: number, data: unknown) {
-    if (!this.websocket) {
-      throw new Error('No websocket exists, unable to send the payload.');
-    }
-    this.emit('internal:send', JSON.stringify({
-      d: data,
-      op: opcode,
-    }));
-    this.websocket.send(GatewayShard.encodePayload({
-      d: data,
-      op: opcode,
-    }));
-  }
-
-  private static encodePayload(payload: unknown) {
-    return erlpack.pack(payload);
-  }
-
-  private static decodePayload<T = unknown>(payload: string | Buffer): T {
-    let data = payload;
-    if (!Buffer.isBuffer(payload)) {
-      data = Buffer.from(new Uint8Array(data as Uint8Array));
-    }
-    return erlpack.unpack(data as Buffer);
   }
 
   emit(event: EventNames<ValidEventTypes>, ...args: EventArgs<ValidEventTypes, EventNames<ValidEventTypes>>): boolean {
-    super.emit('*', event, ...args);
+    this.gatewayClient.emit(event, ...args);
     return super.emit(event, ...args);
   }
 }
