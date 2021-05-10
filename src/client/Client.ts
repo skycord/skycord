@@ -34,7 +34,7 @@ export class Client<R extends RestClient> extends EventEmitter {
   }
 
   public initializeNewRestClient<O extends RestClientOptions>(RestClientType: {
-    new (clientEventEmitter: EventEmitter, restClientOptions: RestClientOptions): R;
+    new (client: Client<RestClient>, restClientOptions: RestClientOptions): R;
   }, restClientOptions?: Partial<O>): R {
     this.restClient = new RestClientType(this, {
       ...defaultRestClientOptions,
