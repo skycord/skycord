@@ -16,7 +16,7 @@ export class RestError extends Error {
     super(`Error ${response.status} occurred during rest request.`);
     this.response = response;
 
-    if (response.body.code === 50035 && response.body.errors) {
+    if (response.body.errors) {
       this.errors = response.body.errors;
     }
   }

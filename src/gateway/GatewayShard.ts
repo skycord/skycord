@@ -5,7 +5,9 @@ import * as zlib from 'zlib';
 import {
   GatewayCloseCodes, GatewayDispatchEvents, GatewayOPCodes, GatewayReceivePayload,
 } from 'discord-api-types';
-import type { Client, GatewayClient, RestClient } from '../index';
+import type { Client } from '../client/Client';
+import type { GatewayClient } from './GatewayClient';
+import type { RestClient } from '../rest/RestClient';
 import Timer = NodeJS.Timer;
 
 export class GatewayShard extends EventEmitter {
@@ -26,6 +28,8 @@ export class GatewayShard extends EventEmitter {
   private lastHeartbeatAcked: boolean;
 
   private heartbeatInterval: Timer | undefined;
+
+  public userId: string | undefined;
 
   constructor(client: Client<RestClient>, gatewayClient: GatewayClient, shardId: number) {
     super();
@@ -166,6 +170,7 @@ export class GatewayShard extends EventEmitter {
         switch (gatewayPayload.t) {
           case GatewayDispatchEvents.Ready:
             this.sessionId = gatewayPayload.d.session_id;
+            this.userId = gatewayPayload.d.user.id;
             this.emit(gatewayPayload.t, gatewayPayload.d);
             break;
           default: {
