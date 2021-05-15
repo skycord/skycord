@@ -1,5 +1,4 @@
-import { File } from 'formdata-node';
-import type { Client } from '../client/Client';
+import type { ClientType } from '../client/Client';
 
 const { version } = require('../../package.json');
 
@@ -21,9 +20,16 @@ export const defaultRestClientOptions: RestClientOptions = {
   token: undefined,
 };
 
+export interface RestRequestFile {
+
+  name: string;
+
+  value: any;
+}
+
 export interface RestRequestOptions {
   data?: unknown;
-  files?: File[];
+  files?: RestRequestFile[];
   method?: string;
   headers?: Record<string, string>;
   query?: Record<string, string>;
@@ -40,11 +46,11 @@ export interface RestResponse<T> {
 export abstract class RestClient<O = RestClientOptions> {
   public readonly mode: string;
 
-  public readonly client: Client<RestClient>;
+  public readonly client: ClientType;
 
   public readonly restClientOptions: O;
 
-  constructor(mode: string, client: Client<RestClient>, restClientOptions: O) {
+  constructor(mode: string, client: ClientType, restClientOptions: O) {
     this.mode = mode;
     this.client = client;
     this.restClientOptions = restClientOptions;

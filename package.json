@@ -1,6 +1,6 @@
 {
   "name": "skycord",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A low-level Discord API wrapper written in TypeScript.",
   "keywords": [
     "discord",
@@ -43,7 +43,7 @@
     "abort-controller": "^3.0.0",
     "discord-api-types": "^0.18.1",
     "eventemitter3": "^4.0.7",
-    "formdata-node": "^3.3.1",
+    "form-data": "^4.0.0",
     "node-fetch": "^2.6.1",
     "ws": "^7.4.5",
     "zlib-sync": "^0.1.7"

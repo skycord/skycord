@@ -1,12 +1,12 @@
 import { URLSearchParams } from 'url';
 import fetch, { BodyInit, Headers } from 'node-fetch';
-import { FormData } from 'formdata-node';
+import FormData from 'form-data';
 import { RatelimitBucketRestClient, QueuedRatelimitBucket } from '../../utils/QueuedRatelimitBucket';
 import {
   defaultRestClientOptions, RestClient, RestClientOptions, RestRequestOptions, RestResponse,
 } from '../RestClient';
 import { RestError, RestErrorBody } from '../RestError';
-import type { Client } from '../../client/Client';
+import type { ClientType } from '../../client/Client';
 
 export interface LocalRestClientOptions extends RestClientOptions {}
 
@@ -17,7 +17,7 @@ export class LocalRestClient extends RestClient<LocalRestClientOptions> implemen
 
   private routes: Map<string, QueuedRatelimitBucket>;
 
-  constructor(client: Client<RestClient>, restClientOptions: LocalRestClientOptions) {
+  constructor(client: ClientType, restClientOptions: LocalRestClientOptions) {
     super('LOCAL', client, {
       ...defaultRestClientOptions,
       ...restClientOptions,
@@ -42,14 +42,17 @@ export class LocalRestClient extends RestClient<LocalRestClientOptions> implemen
     }
 
     let body;
-    if (options?.files) {
+    if (options?.files && options.files.length > 0) {
       body = new FormData();
       for (let i = 0; i < options.files.length; i += 1) {
-        body.append(options.files[i].name, options.files[i]);
+        body.append(options.files[i].name, typeof options.files[i].value === 'string' ? Buffer.from(options.files[i].value) : options.files[i].value, {
+          filename: options.files[i].name,
+        });
       }
       if (options.data) {
         body.append('payload_json', JSON.stringify(options.data));
       }
+      headers.set('content-type', body.getHeaders()['content-type']);
     } else if (options?.data) {
       body = JSON.stringify(options.data);
       headers.set('content-type', 'application/json');

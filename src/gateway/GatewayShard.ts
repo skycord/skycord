@@ -5,13 +5,12 @@ import * as zlib from 'zlib';
 import {
   GatewayCloseCodes, GatewayDispatchEvents, GatewayOPCodes, GatewayReceivePayload,
 } from 'discord-api-types';
-import type { Client } from '../client/Client';
 import type { GatewayClient } from './GatewayClient';
-import type { RestClient } from '../rest/RestClient';
+import type { ClientType } from '../client/Client';
 import Timer = NodeJS.Timer;
 
 export class GatewayShard extends EventEmitter {
-  public readonly client: Client<RestClient>;
+  public readonly client: ClientType;
 
   public readonly gatewayClient: GatewayClient;
 
@@ -31,7 +30,7 @@ export class GatewayShard extends EventEmitter {
 
   public userId: string | undefined;
 
-  constructor(client: Client<RestClient>, gatewayClient: GatewayClient, shardId: number) {
+  constructor(client: ClientType, gatewayClient: GatewayClient, shardId: number) {
     super();
     this.client = client;
     this.gatewayClient = gatewayClient;

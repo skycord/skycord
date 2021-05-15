@@ -1,8 +1,8 @@
 import EventEmitter from 'eventemitter3';
-import type { Client } from '../client/Client';
-import type { RestClient } from '../rest/RestClient';
+import type { ClientType } from '../client/Client';
 import { wait } from '../utils/TimerUtils';
 import { GatewayShard } from './GatewayShard';
+import { RestRoutes } from '../rest/RestRoutes';
 
 export interface GatewayClientOptions {
 
@@ -23,7 +23,7 @@ export const defaultGatewayClientOptions: GatewayClientOptions = {
 };
 
 export class GatewayClient extends EventEmitter {
-  public readonly client: Client<RestClient>;
+  public readonly client: ClientType;
 
   public readonly gatewayClientOptions: GatewayClientOptions;
 
@@ -39,7 +39,7 @@ export class GatewayClient extends EventEmitter {
 
   public determinedTotalShards = 1;
 
-  constructor(client: Client<RestClient>, gatewayClientOptions: GatewayClientOptions) {
+  constructor(client: ClientType, gatewayClientOptions: GatewayClientOptions) {
     super();
     this.client = client;
     this.gatewayClientOptions = gatewayClientOptions;
@@ -70,7 +70,7 @@ export class GatewayClient extends EventEmitter {
         session_start_limit: {
           max_concurrency: number;
         };
-      }>('/gateway/bot');
+      }>(RestRoutes.GATEWAY_BOT());
       this.determinedTotalShards = this.gatewayClientOptions.totalShards ?? response.body.shards;
       this.gatewayEndpoint = response.body.url;
       this.maxConcurrency = response.body.session_start_limit.max_concurrency;

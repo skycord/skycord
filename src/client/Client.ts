@@ -1,11 +1,14 @@
 import EventEmitter from 'eventemitter3';
 import { defaultRestClientOptions, RestClient, RestClientOptions } from '../rest/RestClient';
 import { defaultGatewayClientOptions, GatewayClient, GatewayClientOptions } from '../gateway/GatewayClient';
+import { Plugin } from '../plugin/Plugin';
 
 export interface ClientOptions {
 
   token: string;
 }
+
+export type ClientType<R extends RestClient = RestClient> = Client<R>;
 
 export class Client<R extends RestClient> extends EventEmitter {
   public readonly clientOptions: ClientOptions;
@@ -34,7 +37,7 @@ export class Client<R extends RestClient> extends EventEmitter {
   }
 
   public initializeNewRestClient<O extends RestClientOptions>(RestClientType: {
-    new (client: Client<RestClient>, restClientOptions: RestClientOptions): R;
+    new (client: ClientType, restClientOptions: RestClientOptions): R;
   }, restClientOptions?: Partial<O>): R {
     this.restClient = new RestClientType(this, {
       ...defaultRestClientOptions,
@@ -58,5 +61,13 @@ export class Client<R extends RestClient> extends EventEmitter {
       ...gatewayClientOptions,
     });
     return this.gatewayClient;
+  }
+
+  public async initializePlugin<P extends Plugin, O = unknown>(PluginType: {
+    new(client: ClientType, pluginOptions: O): P;
+  }, pluginOptions: O): Promise<P> {
+    const plugin = new PluginType(this, pluginOptions);
+    await plugin.initialize();
+    return plugin;
   }
 }
