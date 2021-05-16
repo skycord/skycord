@@ -85,6 +85,9 @@ export class GatewayShard extends EventEmitter {
       case 4006: // Session no longer valid
       case GatewayCloseCodes.InvalidSeq:
       case GatewayCloseCodes.SessionTimedOut:
+        if (this.heartbeatInterval) {
+          clearInterval(this.heartbeatInterval);
+        }
         this.gatewayClient.spawnShard(this.shardId);
         break;
       case GatewayCloseCodes.InvalidShard:

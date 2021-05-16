@@ -1,8 +1,10 @@
 import EventEmitter from 'eventemitter3';
+import { GatewayOPCodes, GatewayRequestGuildMembersData } from 'discord-api-types';
 import type { ClientType } from '../client/Client';
 import { wait } from '../utils/TimerUtils';
 import { GatewayShard } from './GatewayShard';
 import { RestRoutes } from '../rest/RestRoutes';
+import { GatewayIntentsBitfield } from '../utils/Constants';
 
 export interface GatewayClientOptions {
 
@@ -17,7 +19,7 @@ export interface GatewayClientOptions {
 
 export const defaultGatewayClientOptions: GatewayClientOptions = {
   version: 9,
-  intents: 513,
+  intents: new GatewayIntentsBitfield(['GUILDS', 'GUILD_MESSAGES']).value,
   token: undefined,
   totalShards: undefined,
 };
@@ -90,5 +92,31 @@ export class GatewayClient extends EventEmitter {
   public getShardForGuild(guildId: string): GatewayShard | undefined {
     // eslint-disable-next-line no-bitwise
     return this.shards[Number(BigInt(guildId) >> 22n) % this.determinedTotalShards];
+  }
+
+  public requestMembersForGuild(guildId: string, options?: GatewayRequestGuildMembersData): void {
+    const gatewayShard = this.getShardForGuild(guildId);
+    if (!gatewayShard) {
+      return;
+    }
+    let determinedOptions;
+    if (options) {
+      determinedOptions = {
+        ...options,
+        ...{
+          guild_id: guildId,
+        },
+      };
+    } else {
+      determinedOptions = {
+        guild_id: guildId,
+        query: '',
+        limit: 0,
+      };
+    }
+    gatewayShard.send({
+      op: GatewayOPCodes.RequestGuildMembers,
+      d: determinedOptions,
+    });
   }
 }

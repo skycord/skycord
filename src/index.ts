@@ -6,5 +6,7 @@ export * from './rest/modes/LocalRestClient';
 export * from './rest/RestClient';
 export * from './rest/RestError';
 export * from './rest/RestRoutes';
+export * from './utils/Constants';
+export * from './utils/Bitfield';
 export * from './utils/QueuedRatelimitBucket';
 export * from './utils/RatelimitBucket';
