@@ -30,6 +30,8 @@ export class GatewayShard extends EventEmitter {
 
   public userId: string | undefined;
 
+  public canConnect: boolean;
+
   constructor(client: ClientType, gatewayClient: GatewayClient, shardId: number) {
     super();
     this.client = client;
@@ -37,14 +39,19 @@ export class GatewayShard extends EventEmitter {
     this.shardId = shardId;
     this.sequence = -1;
     this.lastHeartbeatAcked = false;
+    this.canConnect = true;
   }
 
   connect(): void {
+    if (!this.canConnect) {
+      return;
+    }
     this.disconnect();
     this.inflate = new Inflate({
       chunkSize: 65535,
     });
     this.websocket = new WebSocket(`${this.gatewayClient.gatewayEndpoint}?v=${this.gatewayClient.gatewayClientOptions.version}&encoding=json&compress=zlib-stream`);
+    this.websocket.onerror = this.onError.bind(this);
     this.websocket.onmessage = this.onMessage.bind(this);
     this.websocket.onclose = this.onClose.bind(this);
   }
@@ -67,6 +74,10 @@ export class GatewayShard extends EventEmitter {
     if (this.websocket) {
       this.websocket.send(JSON.stringify(data));
     }
+  }
+
+  onError(): void {
+    this.connect();
   }
 
   onMessage(messageEvent: MessageEvent): void {

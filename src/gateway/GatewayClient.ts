@@ -53,6 +53,10 @@ export class GatewayClient extends EventEmitter {
 
   public spawnShard(shardId: number): void {
     this.shardSpawnQueue = this.shardSpawnQueue.then(async () => {
+      if (this.shards[shardId]) {
+        this.shards[shardId].canConnect = false;
+        this.shards[shardId].disconnect();
+      }
       if (this.remaining <= 0) {
         await wait(5000);
         this.remaining = this.maxConcurrency;
