@@ -112,7 +112,11 @@ export class GatewayShard extends EventEmitter {
     }
   }
 
-  onPayload(gatewayPayload: GatewayReceivePayload): void {
+  onPayload(gatewayPayload: GatewayReceivePayload | null | undefined): void {
+    if (gatewayPayload === null || gatewayPayload === undefined) {
+      return;
+    }
+
     if (gatewayPayload.s > this.sequence) {
       this.sequence = gatewayPayload.s;
     }
